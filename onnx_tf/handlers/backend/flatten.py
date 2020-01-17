@@ -13,11 +13,12 @@ class Flatten(BackendHandler):
   def _common(cls, node, **kwargs):
     x = kwargs["tensor_dict"][node.inputs[0]]
     shape = tf.shape(x)
-    x_rank = len(x.shape)
     axis = node.attrs.get("axis", 1)
 
-    if axis == 1 and x_rank > 1:
-      return [cls.make_tensor_from_onnx_node(node, **kwargs)]
+    if axis == 1:
+      x_rank = len(x.shape)
+      if x_rank > 1:
+        return [cls.make_tensor_from_onnx_node(node, **kwargs)]
 
     if axis == 0:
       cal_shape = (1, -1)
