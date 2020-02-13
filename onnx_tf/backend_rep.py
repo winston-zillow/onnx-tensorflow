@@ -84,7 +84,7 @@ class TensorflowRep(BackendRep):
         output_values = sess.run(outputs, feed_dict=feed_dict)
         return namedtupledict('Outputs', self.outputs)(*output_values)
 
-  def export_graph(self, path):
+  def export_graph(self, path, save_as_tf_checkpoint=False):
     """Export backend representation to a Tensorflow proto file.
 
     This function obtains the graph proto corresponding to the ONNX
@@ -92,18 +92,27 @@ class TensorflowRep(BackendRep):
     to a protobuf file.
 
     :param path: The path to the output TF protobuf file.
+    :param save_as_tf_checkpoint: If `True`, save as tensorflow
+      checkpoint, else save as graph in protobuf. Default `False`
 
     :returns: none.
     """
-    graph_proto = self.graph.as_graph_def()
-    # rename the output nodes
-    meaningful_names = {}
-    for output_name in self.outputs:
-      meaningful_names[self.tensor_dict[output_name].name.replace(':0', '')] = output_name
-    for node in graph_proto.node:
-      if node.name in meaningful_names.keys():
-        node.name = meaningful_names[node.name]
+    if not save_as_tf_checkpoint:
+      with self.graph.as_default():
+        with tf.Session() as sess:
+          sess.run(tf.global_variables_initializer())
+          saver = tf.train.Saver()
+          saver.save(sess, path)
+    else:
+      graph_proto = self.graph.as_graph_def()
+      # rename the output nodes
+      meaningful_names = {}
+      for output_name in self.outputs:
+        meaningful_names[self.tensor_dict[output_name].name.replace(':0', '')] = output_name
+      for node in graph_proto.node:
+        if node.name in meaningful_names.keys():
+          node.name = meaningful_names[node.name]
 
-    file = open(path, "wb")
-    file.write(graph_proto.SerializeToString())
-    file.close()
+      file = open(path, "wb")
+      file.write(graph_proto.SerializeToString())
+      file.close()

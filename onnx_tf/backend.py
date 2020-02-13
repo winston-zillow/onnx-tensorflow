@@ -41,6 +41,7 @@ class TensorflowBackend(Backend):
               device='CPU',
               strict=True,
               logging_level='INFO',
+              trainables=None,
               **kwargs):
     """Prepare an ONNX model for Tensorflow Backend.
 
@@ -62,10 +63,15 @@ class TensorflowBackend(Backend):
     super(TensorflowBackend, cls).prepare(model, device, **kwargs)
     common.logger.setLevel(logging_level)
 
-    return cls.onnx_model_to_tensorflow_rep(model, strict)
+    if trainables is not None:
+      with open(trainables, 'r') as f:
+        trainables = set()
+        for line in f:
+          trainables.add(line.strip())
+    return cls.onnx_model_to_tensorflow_rep(model, strict, trainables)
 
   @classmethod
-  def onnx_model_to_tensorflow_rep(cls, model, strict):
+  def onnx_model_to_tensorflow_rep(cls, model, strict, trainables):
     """ Convert ONNX model to TensorflowRep.
 
     :param model: ONNX ModelProto object.
@@ -82,10 +88,10 @@ class TensorflowBackend(Backend):
       opset_import = [make_opsetid(defs.ONNX_DOMAIN, 1)]
     else:
       opset_import = model.opset_import
-    return cls._onnx_graph_to_tensorflow_rep(model.graph, opset_import, strict)
+    return cls._onnx_graph_to_tensorflow_rep(model.graph, opset_import, strict, trainables)
 
   @classmethod
-  def _onnx_graph_to_tensorflow_rep(cls, graph_def, opset, strict):
+  def _onnx_graph_to_tensorflow_rep(cls, graph_def, opset, strict, trainables):
     """ Convert ONNX graph to TensorflowRep.
 
     :param graph_def: ONNX GraphProto object.
@@ -94,6 +100,8 @@ class TensorflowBackend(Backend):
       and the converted tensorflow model.
     :return: TensorflowRep object.
     """
+    if trainables is None:
+      trainables = set()
     handlers = cls._get_handlers(opset)
 
     tf_rep_graph = tf.Graph()
@@ -103,7 +111,7 @@ class TensorflowBackend(Backend):
       # initialized: A list of names of the initialized tensors.
       if graph_def.initializer:
         input_dict_items = cls._onnx_initializer_to_input_dict_items(
-            graph_def.initializer)
+            graph_def.initializer, trainables)
         initialized = {init.name for init in graph_def.initializer}
       else:
         input_dict_items = []
@@ -194,7 +202,7 @@ class TensorflowBackend(Backend):
     return namedtupledict('Outputs', node.outputs)(*output_vals)
 
   @classmethod
-  def _onnx_initializer_to_input_dict_items(cls, initializer):
+  def _onnx_initializer_to_input_dict_items(cls, initializer, trainables):
     """ Convert ONNX graph initializer to input dict items.
 
     :param initializer: ONNX graph initializer, list of TensorProto.
@@ -205,13 +213,21 @@ class TensorflowBackend(Backend):
       # Use the onnx.numpy_helper because the data may be raw
       return numpy_helper.to_array(onnx_tensor).flatten().tolist()
 
-    return [(init.name,
-             tf.constant(
-                 tensor2list(init),
-                 shape=init.dims,
-                 dtype=data_type.onnx2tf(init.data_type),
-                 name=init.name))
-            for init in initializer]
+    init_list = []
+    for init in initializer:
+      if init.name in trainables:
+        node = tf.get_variable(
+          init.name,
+          dtype=data_type.onnx2tf(init.data_type),
+          initializer=numpy_helper.to_array(init))
+      else:
+        node = tf.constant(
+          tensor2list(init),
+          shape=init.dims,
+          dtype=data_type.onnx2tf(init.data_type),
+          name=init.name)
+      init_list.append((init.name, node))
+    return init_list
 
   @classmethod
   def _onnx_node_to_tensorflow_op(cls,

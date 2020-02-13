@@ -94,6 +94,7 @@ def parse_args(args):
   )
 
   # required two args, source and destination path
+  parser.add_argument("--trainables", type=str, help='File path to the trainable tensor list')
   parser.add_argument("--infile", "-i", help="Input file path.", required=True)
   parser.add_argument(
       "--outfile", "-o", help="Output file path.", required=True)
@@ -131,5 +132,5 @@ def convert(infile, outfile, **kwargs):
   common.logger.info("Start converting onnx pb to tf pb:")
   onnx_model = onnx.load(infile)
   tf_rep = backend.prepare(onnx_model, **kwargs)
-  tf_rep.export_graph(outfile)
+  tf_rep.export_graph(outfile, save_as_tf_checkpoint='trainables' in kwargs)
   common.logger.info("Converting completes successfully.")
