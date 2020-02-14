@@ -7,6 +7,7 @@ import copy
 import inspect
 
 import tensorflow as tf
+import numpy as np
 
 from onnx_tf.common import IS_PYTHON3
 from onnx_tf.common import get_data_format
@@ -180,3 +181,13 @@ class BackendHandler(Handler):
     attrs = cls._process_attrs(attrs)
     return tf_func(*inputs,
                    **dict([(p, attrs[p]) for p in params if p in attrs]))
+
+  @classmethod
+  def get_or_create_tf_is_training(cls):
+    with tf.name_scope(""):
+      try:
+        tf_is_training_float = tf.get_default_graph().get_tensor_by_name('is_training_float:0')
+      except KeyError:
+        tf_is_training = tf.placeholder_with_default(np.array(False), tuple(), name='is_training')
+        tf_is_training_float = tf.cast(tf_is_training, tf.float32, name='is_training_float')
+      return tf_is_training_float
