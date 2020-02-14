@@ -97,7 +97,7 @@ class TensorflowRep(BackendRep):
 
     :returns: none.
     """
-    if not save_as_tf_checkpoint:
+    if save_as_tf_checkpoint:
       with self.graph.as_default():
         with tf.Session() as sess:
           sess.run(tf.global_variables_initializer())
